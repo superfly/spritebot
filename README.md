@@ -1,0 +1,1 @@
+spritebot: the discord bot for the Sprites server
