@@ -24,6 +24,9 @@ const PORT = process.env.PORT || 3000;
 // Discord public key from environment
 const PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY;
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const VERIFY_CHANNEL_ID = "1466797134580941024";
+const VERIFY_MESSAGE_ID = "1467907518440276028";
 
 if (!PUBLIC_KEY) {
   console.error('Error: DISCORD_PUBLIC_KEY is not defined in .env file');
@@ -35,9 +38,35 @@ if (!BOT_TOKEN) {
   process.exit(1);
 }
 
+if (!ADMIN_PASSWORD) {
+  console.error('Error: ADMIN_USERNAME and ADMIN_PASSWORD must be defined in .env file');
+  process.exit(1);
+}
+
 // Initialize Discord REST API client
 const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
 const api = new API(rest);
+
+// Basic auth middleware
+function basicAuth(req: Request, res: Response, next: any) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Spritebot"');
+    return res.status(401).send('Authentication required');
+  }
+
+  const base64Credentials = authHeader.split(' ')[1];
+  const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8');
+  const [username, password] = credentials.split(':');
+
+  if (password === ADMIN_PASSWORD) {
+    return next();
+  }
+
+  res.setHeader('WWW-Authenticate', 'Basic realm="Admin Area"');
+  return res.status(401).send('Invalid credentials');
+}
 
 // Verify Discord requests
 app.post('/interactions', verifyKeyMiddleware(PUBLIC_KEY), async (req: Request, res: Response) => {
@@ -299,8 +328,237 @@ async function logVerification(guildId: string, fullUrl: string, username: strin
   }
 }
 
-app.get('/', (req: Request, res: Response) => {
-  res.send('Discord Interactions Webhook Listener is running!');
+// Admin page to edit verification message
+app.get('/', basicAuth, (req: Request, res: Response) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Spritebot Admin</title>
+      <style>
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          max-width: 800px;
+          margin: 50px auto;
+          padding: 20px;
+          background: #f5f5f5;
+        }
+        .container {
+          background: white;
+          padding: 30px;
+          border-radius: 8px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+          color: #5865F2;
+          margin-top: 0;
+        }
+        label {
+          display: block;
+          margin-top: 20px;
+          font-weight: 600;
+          color: #333;
+        }
+        textarea {
+          width: 100%;
+          min-height: 150px;
+          margin-top: 8px;
+          padding: 12px;
+          border: 2px solid #e0e0e0;
+          border-radius: 4px;
+          font-family: inherit;
+          font-size: 14px;
+          resize: vertical;
+          box-sizing: border-box;
+        }
+        textarea:focus {
+          outline: none;
+          border-color: #5865F2;
+        }
+        .button-group {
+          margin-top: 20px;
+          display: flex;
+          gap: 10px;
+        }
+        button {
+          padding: 12px 24px;
+          border: none;
+          border-radius: 4px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+        .btn-primary {
+          background: #5865F2;
+          color: white;
+        }
+        .btn-primary:hover {
+          background: #4752C4;
+        }
+        .btn-secondary {
+          background: #e0e0e0;
+          color: #333;
+        }
+        .btn-secondary:hover {
+          background: #d0d0d0;
+        }
+        .message {
+          margin-top: 15px;
+          padding: 12px;
+          border-radius: 4px;
+          display: none;
+        }
+        .message.success {
+          background: #d4edda;
+          color: #155724;
+          border: 1px solid #c3e6cb;
+        }
+        .message.error {
+          background: #f8d7da;
+          color: #721c24;
+          border: 1px solid #f5c6cb;
+        }
+        .info {
+          background: #e7f3ff;
+          padding: 15px;
+          border-radius: 4px;
+          margin-top: 20px;
+          font-size: 13px;
+          color: #004085;
+        }
+        .loading {
+          display: none;
+          margin-top: 10px;
+          color: #666;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>🤖 Spritebot Admin</h1>
+        <p>Edit <code>#info</code> message</p>
+
+        <label for="messageContent">Content (Markdown supported)</label>
+        <textarea id="messageContent" placeholder="Loading..."></textarea>
+
+        <div class="button-group">
+          <button class="btn-primary" onclick="updateMessage()">Update Message</button>
+          <button class="btn-secondary" onclick="loadMessage()">Reload</button>
+        </div>
+
+        <div id="statusMessage" class="message"></div>
+        <div id="loading" class="loading">Processing...</div>
+      </div>
+
+      <script>
+        async function loadMessage() {
+          const textarea = document.getElementById('messageContent');
+          const statusMessage = document.getElementById('statusMessage');
+
+          try {
+            const response = await fetch('/api/message');
+            const data = await response.json();
+
+            if (response.ok) {
+              textarea.value = data.content;
+              statusMessage.style.display = 'none';
+            } else {
+              showMessage(data.error || 'Failed to load message', 'error');
+            }
+          } catch (error) {
+            showMessage('Error loading message: ' + error.message, 'error');
+          }
+        }
+
+        async function updateMessage() {
+          const textarea = document.getElementById('messageContent');
+          const loading = document.getElementById('loading');
+          const statusMessage = document.getElementById('statusMessage');
+
+          const content = textarea.value.trim();
+          if (!content) {
+            showMessage('Message content cannot be empty', 'error');
+            return;
+          }
+
+          loading.style.display = 'block';
+          statusMessage.style.display = 'none';
+
+          try {
+            const response = await fetch('/api/message', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ content })
+            });
+
+            const data = await response.json();
+            loading.style.display = 'none';
+
+            if (response.ok) {
+              showMessage('Message updated successfully!', 'success');
+            } else {
+              showMessage(data.error || 'Failed to update message', 'error');
+            }
+          } catch (error) {
+            loading.style.display = 'none';
+            showMessage('Error updating message: ' + error.message, 'error');
+          }
+        }
+
+        function showMessage(text, type) {
+          const statusMessage = document.getElementById('statusMessage');
+          statusMessage.textContent = text;
+          statusMessage.className = 'message ' + type;
+          statusMessage.style.display = 'block';
+        }
+
+        // Load message on page load
+        loadMessage();
+      </script>
+    </body>
+    </html>
+  `);
+});
+
+// API endpoint to get current message content
+app.get('/api/message', basicAuth, async (req: Request, res: Response) => {
+  try {
+    const message = await api.channels.getMessage(VERIFY_CHANNEL_ID, VERIFY_MESSAGE_ID);
+    res.json({ content: message.content });
+  } catch (error) {
+    console.error('Error fetching message:', error);
+    res.status(500).json({ error: 'Failed to fetch message' });
+  }
+});
+
+// API endpoint to update message content
+app.post('/api/message', basicAuth, express.json(), async (req: Request, res: Response) => {
+  try {
+    const { content } = req.body;
+
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({ error: 'Content is required' });
+    }
+
+    // Get the current message to preserve components
+    const currentMessage = await api.channels.getMessage(VERIFY_CHANNEL_ID, VERIFY_MESSAGE_ID);
+
+    // Update message with new content but preserve components (the verify button)
+    await api.channels.editMessage(VERIFY_CHANNEL_ID, VERIFY_MESSAGE_ID, {
+      content: content.trim(),
+      components: currentMessage.components || []
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating message:', error);
+    res.status(500).json({ error: 'Failed to update message' });
+  }
 });
 
 app.listen(PORT, () => {
