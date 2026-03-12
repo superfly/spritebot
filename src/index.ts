@@ -169,6 +169,10 @@ async function handleButtonClick(interaction: APIMessageComponentInteraction, re
         title: 'Verify your Sprite!',
         components: [
           {
+            type: ComponentType.TextDisplay,
+            content: `To get access to the Discord server, create a Sprite that shows your Discord username (\`${interaction.member!.user.username}\`) somewhere in the page.`
+          },
+          {
             type: ComponentType.ActionRow,
             components: [
               {
@@ -200,7 +204,7 @@ async function handleModalSubmit(interaction: APIModalSubmitInteraction, res: Re
 
     // Extract the sprite URL from modal data
     const components = interaction.data.components as any;
-    const actionRow = components[0];
+    const actionRow = components[1];
     const textInput = actionRow.components.find((c: any) => c.custom_id === 'reason_input');
     const spriteUrl = textInput?.value?.trim() || '';
 
