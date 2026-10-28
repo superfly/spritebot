@@ -6,7 +6,7 @@
   },
   "dependencies": {
     "@discordjs/core": "^2.4.0",
-    "@discordjs/rest": "^2.6.0",
+    "@discordjs/rest": "^2.6.3",
     "@types/express": "^5.0.6",
     "discord-api-types": "^0.38.38",
     "discord-interactions": "^4.4.0",
